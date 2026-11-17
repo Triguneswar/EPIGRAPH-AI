@@ -135,6 +135,47 @@ export default function AnalysisResult() {
         </div>
       )}
 
+      {/* UPLOADED INSCRIPTION & VISION PREVIEW */}
+      {analysis.image && (
+        <div className="bg-white/80 border border-ink/10 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-center space-x-2 border-b border-ink/10 pb-3">
+            <ImageIcon className="text-clay" size={20} />
+            <h3 className="font-serif font-bold text-ink">Uploaded Inscription Photo</h3>
+            {analysis.image.filename && (
+              <span className="text-xs font-mono text-ink/60 bg-ink/5 px-2 py-0.5 rounded ml-auto">
+                {analysis.image.filename}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+            <div className="space-y-1.5">
+              <span className="text-xs font-semibold uppercase text-ink/60 tracking-wider">Original Inscription</span>
+              <div className="bg-ink/5 rounded-xl p-2 border border-ink/10 flex items-center justify-center min-h-[220px]">
+                <img
+                  src={`/api/analyses/${analysis.id}/image`}
+                  alt="Original Inscription"
+                  className="rounded-lg max-h-72 w-full object-contain"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+            </div>
+            {preprocess && (
+              <div className="space-y-1.5">
+                <span className="text-xs font-semibold uppercase text-ink/60 tracking-wider">Vision Enhanced & Sharpened</span>
+                <div className="bg-ink/5 rounded-xl p-2 border border-ink/10 flex items-center justify-center min-h-[220px]">
+                  <img
+                    src={`/api/analyses/${analysis.id}/processed_image`}
+                    alt="Processed Inscription"
+                    className="rounded-lg max-h-72 w-full object-contain"
+                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 1. ENGLISH TRANSLATION (PROMINENT AT TOP) */}
       <div className="bg-gradient-to-br from-amber-50 via-white to-orange-50/50 border-2 border-amber-300/80 rounded-2xl p-6 shadow-md space-y-4">
         <div className="flex items-center justify-between border-b border-amber-200/60 pb-3">

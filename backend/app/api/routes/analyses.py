@@ -2,6 +2,7 @@ import os
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.ai.script_classifier import get_script_classifier
@@ -134,6 +135,22 @@ def list_analyses(db: Session = Depends(get_db), user: User = Depends(get_curren
 @router.get("/{analysis_id}", response_model=AnalysisOut)
 def get_analysis(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return _analysis_or_404(analysis_id, user, db)
+
+
+@router.get("/{analysis_id}/image")
+def get_analysis_image(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    analysis = _analysis_or_404(analysis_id, user, db)
+    if not analysis.image or not os.path.exists(analysis.image.original_path):
+        raise HTTPException(status_code=404, detail="Image file not found")
+    return FileResponse(analysis.image.original_path)
+
+
+@router.get("/{analysis_id}/processed_image")
+def get_analysis_processed_image(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    analysis = _analysis_or_404(analysis_id, user, db)
+    if not analysis.preprocessing or not os.path.exists(analysis.preprocessing.processed_path):
+        raise HTTPException(status_code=404, detail="Processed image file not found")
+    return FileResponse(analysis.preprocessing.processed_path)
 
 
 @router.delete("/{analysis_id}", status_code=204)
