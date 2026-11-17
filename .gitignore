@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env
+.env
+*.db
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Data / models (large / user-provided — keep structure via .gitkeep, not content)
+data/raw/*
+data/processed/*
+data/ocr/*
+data/reconstruction/*
+data/historical_documents/*
+!data/**/.gitkeep
+models/**/*.pt
+models/**/*.bin
+models/**/*.onnx
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+*.tsbuildinfo

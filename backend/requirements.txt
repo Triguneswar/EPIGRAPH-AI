@@ -1,0 +1,48 @@
+# --- Core web framework ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# --- Database ---
+sqlalchemy==2.0.35
+alembic==1.13.2
+psycopg2-binary==2.9.9   # PostgreSQL driver (falls back to SQLite in DEMO mode, see core/config.py)
+
+# --- Auth / security ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# --- Image processing (CPU-only, no network needed) ---
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+numpy==1.26.4
+
+# --- AI / ML (only required when USE_DEMO_PROVIDERS=false) ---
+torch==2.4.1
+transformers==4.44.2
+scikit-learn==1.5.2
+
+# --- OCR ---
+pytesseract==0.3.13         # requires the `tesseract-ocr` system package
+# paddleocr==2.8.1           # optional, heavy install — uncomment when needed
+
+# --- LLM / RAG ---
+langchain==0.3.1
+langchain-community==0.3.1
+langgraph==0.2.28
+pgvector==0.3.4
+# anthropic==0.34.2         # uncomment to use Claude API as an LLM provider
+# openai==1.47.0            # uncomment to use an OpenAI-compatible provider
+
+# --- Knowledge graph ---
+neo4j==5.24.0
+
+# --- Reports ---
+reportlab==4.2.5
+jinja2==3.1.4
+
+# --- Testing ---
+pytest==8.3.3
+httpx==0.27.2
