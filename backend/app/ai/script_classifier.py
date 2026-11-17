@@ -13,9 +13,24 @@ import numpy as np
 SUPPORTED_SCRIPTS = [
     "Tamil",
     "Tamil-Brahmi",
+    "Medieval Tamil / Chola Epigraphy",
+    "Medieval Tamil (Stone Slab Epigraphy)",
+    "Imperial Chola Epigraphy / Tamil-Grantha",
+    "Medieval Tamil (Kulothunga Chola Era)",
+    "Pandya Epigraphy / Grantha-Tamil",
+    "Classical Grantha-Tamil Hybrid",
+    "Chola-era Grantha",
     "Vatteluttu",
     "Grantha",
     "Devanagari",
+    "Devanagari / Nagari",
+    "Devanagari / Nagari Epigraphy",
+    "South Asian Epigraphic Series (Tamil / Grantha / Vatteluttu)",
+    "Classical Mediterranean Epigraphy (Latin / Greek)",
+    "Ancient Rock / Wall Epigraphy",
+    "Latin Monumental Script",
+    "Ancient Greek Epigraphy",
+    "Ashokan Brahmi",
     "Unknown",
 ]
 
@@ -123,14 +138,34 @@ class FeatureBasedScriptClassifier(ScriptClassifierProvider):
         )
 
 
+class EpigraphVisionScriptClassifier(ScriptClassifierProvider):
+    def classify(self, image_path: str) -> ScriptPredictionResult:
+        from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+        engine = get_epigraph_vision_engine()
+        res = engine.analyze_inscription(image_path)
+        alts = list(res.script_alternatives)
+        alts.insert(0, {
+            "script": res.detected_script,
+            "language": res.detected_language,
+            "period": res.period_era,
+            "confidence": res.confidence,
+        })
+        return ScriptPredictionResult(
+            script=res.detected_script,
+            confidence=res.confidence,
+            alternatives=alts,
+            provider=res.provider,
+        )
+
+
 class DemoScriptClassifier(ScriptClassifierProvider):
     def classify(self, image_path: str) -> ScriptPredictionResult:
-        res = FeatureBasedScriptClassifier().classify(image_path)
+        res = EpigraphVisionScriptClassifier().classify(image_path)
         res.provider = f"demo ({res.provider})"
         return res
 
 
-def get_script_classifier(use_demo: bool = True) -> ScriptClassifierProvider:
+def get_script_classifier(use_demo: bool = False) -> ScriptClassifierProvider:
     if use_demo:
         return DemoScriptClassifier()
-    return FeatureBasedScriptClassifier()
+    return EpigraphVisionScriptClassifier()

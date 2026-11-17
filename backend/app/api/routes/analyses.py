@@ -199,37 +199,48 @@ def run_preprocessing(analysis_id: str, db: Session = Depends(get_db), user: Use
 @router.post("/{analysis_id}/script")
 def run_script_detection(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     analysis = _analysis_or_404(analysis_id, user, db)
-    if not analysis.preprocessing:
-        raise HTTPException(status_code=400, detail="Run preprocessing before script detection")
+    if not analysis.image:
+        raise HTTPException(status_code=400, detail="No image found for this analysis")
 
-    classifier = get_script_classifier(use_demo=settings.USE_DEMO_PROVIDERS)
-    result = classifier.classify(analysis.preprocessing.processed_path)
+    from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+    engine = get_epigraph_vision_engine()
+    prep_path = analysis.preprocessing.processed_path if analysis.preprocessing else None
+    result = engine.analyze_inscription(analysis.image.original_path, prep_path)
 
     if analysis.script_prediction:
         db.delete(analysis.script_prediction)
         db.flush()
 
+    alts = list(result.script_alternatives)
+    alts.insert(0, {
+        "script": result.detected_script,
+        "language": result.detected_language,
+        "period": result.period_era,
+        "confidence": result.confidence,
+    })
     record = ScriptPrediction(
         analysis_id=analysis.id,
-        script=result.script,
+        script=result.detected_script,
         confidence=result.confidence,
-        alternatives=result.alternatives,
+        alternatives=alts,
         provider=result.provider,
     )
     db.add(record)
     analysis.status = AnalysisStatus.OCR
     db.commit()
-    return {"script": result.script, "confidence": result.confidence, "alternatives": result.alternatives, "provider": result.provider}
+    return {"script": result.detected_script, "confidence": result.confidence, "alternatives": alts, "provider": result.provider}
 
 
 @router.post("/{analysis_id}/ocr")
 def run_ocr(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     analysis = _analysis_or_404(analysis_id, user, db)
-    if not analysis.preprocessing:
-        raise HTTPException(status_code=400, detail="Run preprocessing before OCR")
+    if not analysis.image:
+        raise HTTPException(status_code=400, detail="No image found for this analysis")
 
-    provider = get_ocr_provider(use_demo=settings.USE_DEMO_PROVIDERS)
-    result = provider.extract_text(analysis.preprocessing.processed_path)
+    from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+    engine = get_epigraph_vision_engine()
+    prep_path = analysis.preprocessing.processed_path if analysis.preprocessing else None
+    result = engine.analyze_inscription(analysis.image.original_path, prep_path)
 
     if analysis.ocr_result:
         db.delete(analysis.ocr_result)
@@ -237,20 +248,20 @@ def run_ocr(analysis_id: str, db: Session = Depends(get_db), user: User = Depend
 
     record = OCRResultModel(
         analysis_id=analysis.id,
-        text=result.text,
+        text=result.transcription,
         confidence=result.confidence,
         lines=result.lines,
-        characters=result.characters,
-        uncertain_regions=result.uncertain_regions,
+        characters=[],
+        uncertain_regions=result.uncertain_spans,
         provider=result.provider,
     )
     db.add(record)
     analysis.status = AnalysisStatus.RECONSTRUCTION
     db.commit()
     return {
-        "text": result.text,
+        "text": result.transcription,
         "confidence": result.confidence,
-        "uncertain_regions": result.uncertain_regions,
+        "uncertain_regions": result.uncertain_spans,
         "provider": result.provider,
     }
 
@@ -258,30 +269,39 @@ def run_ocr(analysis_id: str, db: Session = Depends(get_db), user: User = Depend
 @router.post("/{analysis_id}/reconstruct")
 def run_reconstruction(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     analysis = _analysis_or_404(analysis_id, user, db)
-    if not analysis.ocr_result:
-        raise HTTPException(status_code=400, detail="Run OCR before reconstruction")
+    if not analysis.image:
+        raise HTTPException(status_code=400, detail="No image found for this analysis")
 
-    provider = get_reconstruction_provider(use_demo=settings.USE_DEMO_PROVIDERS)
-    result = provider.reconstruct(analysis.ocr_result.text)
+    from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+    engine = get_epigraph_vision_engine()
+    prep_path = analysis.preprocessing.processed_path if analysis.preprocessing else None
+    result = engine.analyze_inscription(analysis.image.original_path, prep_path)
 
     if analysis.reconstruction:
         db.delete(analysis.reconstruction)
         db.flush()
 
+    candidates = [
+        {
+            "text": result.reconstructed_text or result.transcription,
+            "confidence": result.confidence,
+            "reason": f"Paleographic decipherment ({result.detected_language}, {result.period_era})",
+        }
+    ]
     record = ReconstructionResultModel(
         analysis_id=analysis.id,
-        observed_text=result.observed_text,
-        candidates=[c.__dict__ for c in result.candidates],
+        observed_text=result.transcription,
+        candidates=candidates,
         provider=result.provider,
-        requires_expert_verification=result.requires_expert_verification,
+        requires_expert_verification=False,
     )
     db.add(record)
     analysis.status = AnalysisStatus.TRANSLATION
     db.commit()
     return {
-        "observed_text": result.observed_text,
-        "candidates": [c.__dict__ for c in result.candidates],
-        "requires_expert_verification": result.requires_expert_verification,
+        "observed_text": result.transcription,
+        "candidates": candidates,
+        "requires_expert_verification": False,
         "provider": result.provider,
     }
 
@@ -289,34 +309,53 @@ def run_reconstruction(analysis_id: str, db: Session = Depends(get_db), user: Us
 @router.post("/{analysis_id}/translate")
 def run_translation(analysis_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     analysis = _analysis_or_404(analysis_id, user, db)
-    ocr_text = analysis.ocr_result.text if analysis.ocr_result else ""
-    script = analysis.script_prediction.script if analysis.script_prediction else "Unknown"
+    if not analysis.image:
+        raise HTTPException(status_code=400, detail="No image found for this analysis")
 
-    from app.translation.providers import EpigraphTranslator
-    translator = EpigraphTranslator(use_demo=settings.USE_DEMO_PROVIDERS)
-    result = translator.translate(ocr_text, script=script)
+    from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+    engine = get_epigraph_vision_engine()
+    prep_path = analysis.preprocessing.processed_path if analysis.preprocessing else None
+    result = engine.analyze_inscription(analysis.image.original_path, prep_path)
 
     if analysis.translation:
         db.delete(analysis.translation)
         db.flush()
 
+    english_full = result.english_translation
+    if not english_full.startswith("["):
+        english_full = f"[{result.detected_language} · {result.period_era}]\n\n{english_full}"
+
+    meta_spans = [
+        {
+            "language": result.detected_language,
+            "era": result.period_era,
+            "transliteration": result.transliteration,
+            "multilingual": result.multilingual,
+            "hindi": result.hindi_translation,
+            "tamil": result.tamil_translation or result.vernacular_translation,
+            "telugu": result.telugu_translation,
+            "kannada": result.kannada_translation,
+            "vernacular": result.vernacular_translation,
+        }
+    ]
     from app.models.models import Translation
     record = Translation(
         analysis_id=analysis.id,
-        english=result.english,
-        modern_tamil=result.modern_tamil,
+        english=english_full,
+        modern_tamil=result.tamil_translation or result.vernacular_translation,
         confidence=result.confidence,
-        uncertain_spans=result.uncertain_spans,
+        uncertain_spans=meta_spans,
         provider=result.provider,
     )
     db.add(record)
     analysis.status = AnalysisStatus.COMPLETED
     db.commit()
     return {
-        "english": result.english,
-        "modern_tamil": result.modern_tamil,
+        "english": english_full,
+        "modern_tamil": result.tamil_translation or result.vernacular_translation,
         "confidence": result.confidence,
-        "uncertain_spans": result.uncertain_spans,
+        "uncertain_spans": meta_spans,
+        "multilingual": result.multilingual,
         "provider": result.provider,
     }
 
@@ -350,77 +389,120 @@ def _execute_full_pipeline(analysis: Analysis, db: Session) -> Analysis:
     db.add(record_prep)
     db.flush()
 
-    # 2. Script Identification
-    classifier = get_script_classifier(use_demo=settings.USE_DEMO_PROVIDERS)
-    script_res = classifier.classify(prep_result.processed_path)
+    # 2. Multimodal Vision Epigraphic Analysis
+    from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+    vision_engine = get_epigraph_vision_engine()
+    decipher_res = vision_engine.analyze_inscription(
+        analysis.image.original_path,
+        prep_result.processed_path,
+    )
+
+    # 3. Script Identification
     if analysis.script_prediction:
         db.delete(analysis.script_prediction)
         db.flush()
+    alts = list(decipher_res.script_alternatives)
+    alts.insert(0, {
+        "script": decipher_res.detected_script,
+        "language": decipher_res.detected_language,
+        "period": decipher_res.period_era,
+        "confidence": decipher_res.confidence,
+    })
     record_script = ScriptPrediction(
         analysis_id=analysis.id,
-        script=script_res.script,
-        confidence=script_res.confidence,
-        alternatives=script_res.alternatives,
-        provider=script_res.provider,
+        script=decipher_res.detected_script,
+        confidence=decipher_res.confidence,
+        alternatives=alts,
+        provider=decipher_res.provider,
     )
     db.add(record_script)
     db.flush()
 
-    # 3. OCR Text Extraction
-    ocr_prov = get_ocr_provider(use_demo=settings.USE_DEMO_PROVIDERS)
-    ocr_res = ocr_prov.extract_text(prep_result.processed_path)
+    # 4. OCR Text Extraction
     if analysis.ocr_result:
         db.delete(analysis.ocr_result)
         db.flush()
     record_ocr = OCRResultModel(
         analysis_id=analysis.id,
-        text=ocr_res.text,
-        confidence=ocr_res.confidence,
-        lines=ocr_res.lines,
-        characters=ocr_res.characters,
-        uncertain_regions=ocr_res.uncertain_regions,
-        provider=ocr_res.provider,
+        text=decipher_res.transcription,
+        confidence=decipher_res.confidence,
+        lines=decipher_res.lines,
+        characters=[],
+        uncertain_regions=decipher_res.uncertain_spans,
+        provider=decipher_res.provider,
     )
     db.add(record_ocr)
     db.flush()
 
-    # 4. Text Reconstruction
-    recon_prov = get_reconstruction_provider(use_demo=settings.USE_DEMO_PROVIDERS)
-    recon_res = recon_prov.reconstruct(ocr_res.text)
+    # 5. Text Reconstruction
     if analysis.reconstruction:
         db.delete(analysis.reconstruction)
         db.flush()
     record_recon = ReconstructionResultModel(
         analysis_id=analysis.id,
-        observed_text=recon_res.observed_text,
-        candidates=[c.__dict__ for c in recon_res.candidates],
-        provider=recon_res.provider,
-        requires_expert_verification=recon_res.requires_expert_verification,
+        observed_text=decipher_res.transcription,
+        candidates=[
+            {
+                "text": decipher_res.reconstructed_text or decipher_res.transcription,
+                "confidence": decipher_res.confidence,
+                "reason": f"Epigraphic & paleographic decipherment ({decipher_res.detected_language}, {decipher_res.period_era})",
+            }
+        ],
+        provider=decipher_res.provider,
+        requires_expert_verification=False,
     )
     db.add(record_recon)
     db.flush()
 
-    # 5. English Translation
-    from app.translation.providers import EpigraphTranslator
-    translator = EpigraphTranslator(use_demo=settings.USE_DEMO_PROVIDERS)
-    trans_res = translator.translate(ocr_res.text, script=script_res.script)
+    # 6. English Translation
     if analysis.translation:
         db.delete(analysis.translation)
         db.flush()
     from app.models.models import Translation
+    english_full = decipher_res.english_translation
+    if not english_full.startswith("["):
+        english_full = f"[{decipher_res.detected_language} · {decipher_res.period_era}]\n\n{english_full}"
+
+    meta_spans = [
+        {
+            "language": decipher_res.detected_language,
+            "era": decipher_res.period_era,
+            "transliteration": decipher_res.transliteration,
+            "multilingual": decipher_res.multilingual,
+            "hindi": decipher_res.hindi_translation,
+            "tamil": decipher_res.tamil_translation or decipher_res.vernacular_translation,
+            "telugu": decipher_res.telugu_translation,
+            "kannada": decipher_res.kannada_translation,
+            "vernacular": decipher_res.vernacular_translation,
+        }
+    ]
     record_trans = Translation(
         analysis_id=analysis.id,
-        english=trans_res.english,
-        modern_tamil=trans_res.modern_tamil,
-        confidence=trans_res.confidence,
-        uncertain_spans=trans_res.uncertain_spans,
-        provider=trans_res.provider,
+        english=english_full,
+        modern_tamil=decipher_res.tamil_translation or decipher_res.vernacular_translation,
+        confidence=decipher_res.confidence,
+        uncertain_spans=meta_spans,
+        provider=decipher_res.provider,
     )
     db.add(record_trans)
+    db.flush()
+
+    # 7. Extract Historical Entities for Knowledge Graph
+    from app.models.models import HistoricalEntity, EvidenceStatus
+    db.query(HistoricalEntity).filter(HistoricalEntity.analysis_id == analysis.id).delete()
+    if decipher_res.named_entities:
+        for ent in decipher_res.named_entities:
+            db.add(HistoricalEntity(
+                analysis_id=analysis.id,
+                name=ent.get("name", "Unknown"),
+                type=ent.get("type", "INSCRIPTION_ENTITY"),
+                confidence=decipher_res.confidence,
+                status=EvidenceStatus.OBSERVED,
+            ))
 
     analysis.status = AnalysisStatus.COMPLETED
     db.commit()
-    # Re-query with eager loading so all relationships are populated
+
     analysis = (
         db.query(Analysis)
         .options(*_eager_options())

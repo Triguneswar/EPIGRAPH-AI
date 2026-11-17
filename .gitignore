@@ -3,17 +3,33 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+backend/venv/
 *.egg-info/
 .pytest_cache/
 
-# Env
+# Env & Secrets (CRITICAL: Never commit API keys or local DBs)
 .env
+*.env
+.env.*
+backend/.env
+frontend/.env
 *.db
+*.sqlite
+*.sqlite3
+backend/*.db
+backend/*.sqlite3
 
 # Node / frontend
 node_modules/
+frontend/node_modules/
 dist/
+frontend/dist/
 .vite/
+frontend/.vite/
+
+# Temporary / Scratch Test Scripts
+test_*.py
+backend/test_*.py
 
 # Data / models (large / user-provided — keep structure via .gitkeep, not content)
 data/raw/*

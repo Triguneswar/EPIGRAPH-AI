@@ -59,3 +59,18 @@ export async function runPipeline(id: string) {
   const { data } = await api.post(`/analyses/${id}/pipeline`);
   return data;
 }
+
+export async function getSettings() {
+  const { data } = await api.get("/settings");
+  return data;
+}
+
+export async function updateSettings(settingsData: { api_key?: string; llm_provider?: string; model?: string }) {
+  const { data } = await api.post("/settings", settingsData);
+  return data;
+}
+
+export async function testSettings(settingsData: { api_key?: string; llm_provider?: string }) {
+  const { data } = await api.post("/settings/test", settingsData);
+  return data;
+}

@@ -134,7 +134,9 @@ def preprocess_image(
     if ext.lower() not in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]:
         output_path = f"{root}.png"
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     if not cv2.imwrite(output_path, img):
         output_path = f"{root}.png"
         cv2.imwrite(output_path, img)

@@ -84,6 +84,7 @@ class TranslationOut(BaseModel):
     english: Optional[str] = None
     confidence: Optional[float] = None
     uncertain_spans: list[Any] = []
+    multilingual: Optional[dict[str, str]] = None
     provider: str
 
     class Config:

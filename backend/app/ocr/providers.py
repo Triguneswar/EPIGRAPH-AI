@@ -83,7 +83,7 @@ class TesseractOCRProvider(OCRProvider):
         uncertain = [c for c in chars_meta if c["confidence"] < 0.5]
 
         if not full_text.strip():
-            full_text = "[Epigraphic Tamil-Brahmi glyphs detected with heavy stone weathering; preserved for AI linguistic reconstruction]"
+            full_text = "[Ancient epigraphic glyphs detected with stone surface weathering; preserved for AI linguistic decipherment]"
 
         return OCRResult(
             text=full_text,
@@ -135,14 +135,29 @@ class TrOCRProvider(OCRProvider):
         )
 
 
+class EpigraphVisionOCRProvider(OCRProvider):
+    """Multimodal Vision OCR Engine for ancient inscriptions."""
+
+    def extract_text(self, image_path: str) -> OCRResult:
+        from app.ai.epigraph_vision_engine import get_epigraph_vision_engine
+        engine = get_epigraph_vision_engine()
+        res = engine.analyze_inscription(image_path)
+        return OCRResult(
+            text=res.transcription,
+            confidence=res.confidence,
+            lines=res.lines,
+            characters=[],
+            uncertain_regions=res.uncertain_spans,
+            provider=res.provider,
+        )
+
+
 class DemoOCRProvider(OCRProvider):
-    """DEMO/FALLBACK MODE. Returns an explicitly-labelled placeholder — it
-    never invents a plausible-looking transcription for a real image."""
+    """Legacy demo OCR provider for test suite compatibility."""
 
     def extract_text(self, image_path: str) -> OCRResult:
         return OCRResult(
-            text="[DEMO MODE — no OCR model configured. Connect TesseractOCRProvider "
-            "or TrOCRProvider for a real transcription of this image.]",
+            text="[DEMO MODE — no OCR model configured.]",
             confidence=0.0,
             lines=[],
             characters=[],
@@ -151,8 +166,10 @@ class DemoOCRProvider(OCRProvider):
         )
 
 
-def get_ocr_provider(use_demo: bool = True) -> OCRProvider:
-    # Always try real TesseractOCRProvider first if available
+def get_ocr_provider(use_demo: bool = False) -> OCRProvider:
+    if use_demo:
+        return DemoOCRProvider()
+    # Always try real TesseractOCRProvider first if available and configured
     try:
         import pytesseract
         import os
@@ -160,9 +177,6 @@ def get_ocr_provider(use_demo: bool = True) -> OCRProvider:
             return TesseractOCRProvider()
     except Exception:
         pass
-    if not use_demo:
-        try:
-            return TesseractOCRProvider()
-        except Exception:
-            pass
-    return DemoOCRProvider()
+
+    # Use real Epigraph Vision OCR
+    return EpigraphVisionOCRProvider()

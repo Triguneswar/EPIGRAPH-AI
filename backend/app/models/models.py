@@ -176,6 +176,34 @@ class Translation(Base):
 
     analysis = relationship("Analysis", back_populates="translation")
 
+    @property
+    def multilingual(self) -> dict[str, str]:
+        if self.uncertain_spans and isinstance(self.uncertain_spans, list) and len(self.uncertain_spans) > 0:
+            first = self.uncertain_spans[0]
+            if isinstance(first, dict):
+                ml = first.get("multilingual")
+                if isinstance(ml, dict) and ml:
+                    return ml
+                res = {}
+                if first.get("hindi"):
+                    res["hi"] = first["hindi"]
+                if first.get("tamil"):
+                    res["ta"] = first["tamil"]
+                if first.get("telugu"):
+                    res["te"] = first["telugu"]
+                if first.get("kannada"):
+                    res["kn"] = first["kannada"]
+                if first.get("vernacular"):
+                    res["vernacular"] = first["vernacular"]
+                if self.english:
+                    res["en"] = self.english
+                if res:
+                    return res
+        return {
+            "en": self.english or "",
+            "ta": self.modern_tamil or "",
+        }
+
 
 class HistoricalEntity(Base):
     __tablename__ = "historical_entities"
